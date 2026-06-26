@@ -1,0 +1,71 @@
+# Environment and dependencies
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Data
+data/raw/
+data/processed/
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.json
+
+# Results and models
+results/models/
+*.pkl
+*.joblib
+*.h5
+*.model
+
+# IDE and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.env
+.env.local
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+temp/
