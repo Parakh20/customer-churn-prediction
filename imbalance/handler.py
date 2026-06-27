@@ -43,6 +43,29 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _validate_arrays(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+) -> None:
+    """Validate shapes and types before fitting.
+
+    Raises:
+        TypeError: If any input is not np.ndarray.
+        ValueError: If X arrays are not 2-D or X/y lengths don't match.
+    """
+    for name, X, y in [("train", X_train, y_train), ("val", X_val, y_val)]:
+        if not isinstance(X, np.ndarray):
+            raise TypeError(f"X_{name} must be np.ndarray, got {type(X)}")
+        if not isinstance(y, np.ndarray):
+            raise TypeError(f"y_{name} must be np.ndarray, got {type(y)}")
+        if X.ndim != 2:
+            raise ValueError(f"X_{name} must be 2-D, got shape {X.shape}")
+        if len(X) != len(y):
+            raise ValueError(f"X_{name} rows ({len(X)}) != y_{name} length ({len(y)})")
+
+
 def _fit_lr(
     X_train: np.ndarray,
     y_train: np.ndarray,
@@ -131,6 +154,7 @@ def strategy_none(
     y_val: np.ndarray,
 ) -> dict:
     """Strategy 1: no resampling, no class weighting, threshold=0.5."""
+    _validate_arrays(X_train, y_train, X_val, y_val)
     model = _fit_lr(X_train, y_train, class_weight=None)
     threshold = _DEFAULT_THRESHOLD
     val_metrics = _compute_val_metrics(model, X_val, y_val, threshold)
@@ -153,6 +177,7 @@ def strategy_class_weight(
     y_val: np.ndarray,
 ) -> dict:
     """Strategy 2: class_weight='balanced', threshold=0.5."""
+    _validate_arrays(X_train, y_train, X_val, y_val)
     model = _fit_lr(X_train, y_train, class_weight="balanced")
     threshold = _DEFAULT_THRESHOLD
     val_metrics = _compute_val_metrics(model, X_val, y_val, threshold)
@@ -178,6 +203,7 @@ def strategy_smote(
 
     SMOTE is NEVER applied to val or test data.
     """
+    _validate_arrays(X_train, y_train, X_val, y_val)
     smote = SMOTE(random_state=RANDOM_SEED)
     X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
 
@@ -214,6 +240,7 @@ def strategy_threshold_tuning(
     Returns the threshold that maximises -(5*FN + FP).
     Also records the F1-optimal threshold for reference.
     """
+    _validate_arrays(X_train, y_train, X_val, y_val)
     model = _fit_lr(X_train, y_train, class_weight="balanced")
     proba_val = model.predict_proba(X_val)[:, 1]
 
@@ -250,17 +277,19 @@ def compare_strategies(
     y_train: np.ndarray,
     X_val: np.ndarray,
     y_val: np.ndarray,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """Run all four strategies and return a comparison DataFrame.
 
     Columns: strategy, precision, recall, f1, auc_roc, auc_pr, threshold.
-    Also prints the table to stdout.
+    Also prints the table to stdout when verbose=True.
 
     Args:
         X_train: Preprocessed training features (numpy array).
         y_train: Training labels (numpy array).
         X_val:   Preprocessed validation features (numpy array).
         y_val:   Validation labels (numpy array).
+        verbose: If True, print the comparison table to stdout (default True).
 
     Returns:
         DataFrame with one row per strategy.
@@ -282,9 +311,10 @@ def compare_strategies(
         columns=["strategy", "precision", "recall", "f1", "auc_roc", "auc_pr", "threshold"],
     )
 
-    print("\n=== Strategy Comparison (validation set) ===")
-    print(df.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
-    print()
+    if verbose:
+        print("\n=== Strategy Comparison (validation set) ===")
+        print(df.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+        print()
 
     return df
 
@@ -354,7 +384,7 @@ if __name__ == "__main__":
     assert 0.0 < thresh4 < 1.0, f"FAIL — strategy 4 threshold {thresh4} not in (0, 1)"
 
     # SMOTE must not touch val (y_val_arr unchanged)
-    assert len(y_val_arr) == len(y_val), "FAIL — val set was modified"
+    assert np.array_equal(y_val_arr, y_val.to_numpy() if hasattr(y_val, 'to_numpy') else y_val), "FAIL — val set was modified"
 
     print("\nAll assertions passed.")
 
