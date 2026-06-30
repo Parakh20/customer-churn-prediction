@@ -29,7 +29,6 @@ import pandas as pd
 from features.engineering import engineer
 from features.preprocessing import fit_transform_splits, split_data
 from features.selection import select_features
-from models.evaluator import evaluate_all_models, find_best_model
 from models.trainer import N_TRIALS_SMOKE, tune_all_models
 
 RANDOM_SEED = 42
@@ -136,7 +135,7 @@ class ChurnPipeline:
         self.transformer = transformer
 
         log.info("Step 5: Tuning models (%d trials each) ...", n_trials)
-        tune_all_models(
+        summary = tune_all_models(
             X_tr,
             y_train.values,
             X_v,
@@ -145,10 +144,17 @@ class ChurnPipeline:
             n_trials=n_trials,
         )
 
-        log.info("Step 6: Evaluating models on held-out test set ...")
-        metrics = evaluate_all_models(X_te, y_test.values)
-        self.best_algo_name, self.best_model = find_best_model(metrics)
-        log.info("Best model: %s", self.best_algo_name)
+        # Pick the best model by AUC-PR directly from tune_all_models' summary
+        # to avoid loading from a hard-coded results/models/ path.
+        log.info("Step 6: Selecting best model by val AUC-PR ...")
+        best_algo = max(summary, key=lambda k: summary[k]["best_auc_pr"])
+        self.best_algo_name = best_algo
+        self.best_model = joblib.load(summary[best_algo]["model_path"])
+        log.info(
+            "Best model: %s (val AUC-PR=%.4f)",
+            best_algo,
+            summary[best_algo]["best_auc_pr"],
+        )
 
         return self
 
@@ -220,6 +226,7 @@ class ChurnPipeline:
 
 if __name__ == "__main__":
     import sys
+    import tempfile
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -230,35 +237,37 @@ if __name__ == "__main__":
     raw = pd.read_csv(str(csv_path))
     raw["TotalCharges"] = pd.to_numeric(raw["TotalCharges"], errors="coerce")
 
-    # Use 200-row slice for smoke fit
+    # Use 200-row slice for smoke fit; isolate artifacts in a temp dir so the
+    # shared results/models/ full-data artifacts are never clobbered.
     raw_sample = raw.sample(n=200, random_state=RANDOM_SEED).reset_index(drop=True)
     print(f"Smoke fit slice: {len(raw_sample)} rows (includes 'Churn' column)")
 
-    pipeline = ChurnPipeline()
-    pipeline.fit(raw_sample, target_col="Churn", smoke=True)
-    print(f"Fitted pipeline — best model: {pipeline.best_algo_name}")
-    print(f"  Selected features: {len(pipeline.selected_features)}")
+    with tempfile.TemporaryDirectory() as _tmp_models:
+        pipeline = ChurnPipeline()
+        pipeline.fit(raw_sample, target_col="Churn", smoke=True, models_dir=_tmp_models)
+        print(f"Fitted pipeline — best model: {pipeline.best_algo_name}")
+        print(f"  Selected features: {len(pipeline.selected_features)}")
 
-    # Predict on 5 raw rows WITHOUT manually calling engineer / preprocessor
-    raw_predict = raw_sample.drop(columns=["Churn"]).head(5)
-    print(f"\nRunning predict_proba on {len(raw_predict)} raw rows ...")
-    probs = pipeline.predict_proba(raw_predict)
-    assert probs.shape == (5,), f"Expected shape (5,), got {probs.shape}"
-    assert np.all((probs >= 0) & (probs <= 1)), "Probabilities out of [0, 1] range"
-    print(f"  Probabilities: {probs.round(4)}")
+        # Predict on 5 raw rows WITHOUT manually calling engineer / preprocessor
+        raw_predict = raw_sample.drop(columns=["Churn"]).head(5)
+        print(f"\nRunning predict_proba on {len(raw_predict)} raw rows ...")
+        probs = pipeline.predict_proba(raw_predict)
+        assert probs.shape == (5,), f"Expected shape (5,), got {probs.shape}"
+        assert np.all((probs >= 0) & (probs <= 1)), "Probabilities out of [0, 1] range"
+        print(f"  Probabilities: {probs.round(4)}")
 
-    labels = pipeline.predict(raw_predict, threshold=0.5)
-    assert labels.shape == (5,), f"Expected shape (5,), got {labels.shape}"
-    assert set(labels).issubset({0, 1}), f"Unexpected label values: {set(labels)}"
-    print(f"  Labels:        {labels}")
+        labels = pipeline.predict(raw_predict, threshold=0.5)
+        assert labels.shape == (5,), f"Expected shape (5,), got {labels.shape}"
+        assert set(labels).issubset({0, 1}), f"Unexpected label values: {set(labels)}"
+        print(f"  Labels:        {labels}")
 
-    # Test save / load round-trip
-    save_path = project_root / "results" / "models" / "churn_pipeline_smoke.pkl"
-    pipeline.save(save_path)
-    loaded = ChurnPipeline.load(save_path)
-    probs2 = loaded.predict_proba(raw_predict)
-    assert np.allclose(probs, probs2), "Save/load round-trip produced different probabilities"
-    print("  Save/load round-trip: OK")
+        # Test save / load round-trip inside temp dir
+        save_path = Path(_tmp_models) / "churn_pipeline_smoke.pkl"
+        pipeline.save(save_path)
+        loaded = ChurnPipeline.load(save_path)
+        probs2 = loaded.predict_proba(raw_predict)
+        assert np.allclose(probs, probs2), "Save/load round-trip produced different probabilities"
+        print("  Save/load round-trip: OK")
 
     print("\npipeline.full_pipeline smoke test: OK")
     sys.exit(0)
