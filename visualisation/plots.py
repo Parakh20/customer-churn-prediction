@@ -117,24 +117,17 @@ def plot_feature_importance(
     return fig
 
 
-def plot_probability_gauge(churn_prob: float, save_path: str | None = None) -> Figure:
-    """Single-value gauge/dial showing churn probability (0–1).
+def _draw_gauge_arcs(ax: matplotlib.axes.Axes, radius: float = 1) -> None:
+    """Draw gauge arcs and color zones for probability gauge.
 
     Args:
-        churn_prob: Churn probability between 0 and 1.
-        save_path: Optional file path to save figure.
-
-    Returns:
-        Matplotlib Figure object.
+        ax: Matplotlib axis to draw on.
+        radius: Radius of the gauge arc.
     """
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    # Gauge setup: semi-circle from 0° to 180°
     theta = np.linspace(np.pi, 0, 100)
-    r = 1
 
     # Background arc (full range)
-    ax.plot(r * np.cos(theta), r * np.sin(theta), "k-", linewidth=2)
+    ax.plot(radius * np.cos(theta), radius * np.sin(theta), "k-", linewidth=2)
 
     # Color zones: green (0-0.5), yellow (0.5-0.75), red (0.75-1.0)
     zones = [
@@ -145,9 +138,17 @@ def plot_probability_gauge(churn_prob: float, save_path: str | None = None) -> F
 
     for start, end, color in zones:
         zone_theta = np.linspace(start, end, 50)
-        ax.fill_between(r * np.cos(zone_theta), r * np.sin(zone_theta), 0, alpha=0.3, color=color)
-        ax.plot(r * np.cos(zone_theta), r * np.sin(zone_theta), color=color, linewidth=3)
+        ax.fill_between(radius * np.cos(zone_theta), radius * np.sin(zone_theta), 0, alpha=0.3, color=color)
+        ax.plot(radius * np.cos(zone_theta), radius * np.sin(zone_theta), color=color, linewidth=3)
 
+
+def _draw_gauge_needle(ax: matplotlib.axes.Axes, churn_prob: float) -> None:
+    """Draw needle and labels on probability gauge.
+
+    Args:
+        ax: Matplotlib axis to draw on.
+        churn_prob: Churn probability between 0 and 1.
+    """
     # Needle pointing to current probability
     angle = np.pi - (churn_prob * np.pi)  # Convert prob (0-1) to angle
     needle_length = 0.8
@@ -163,7 +164,7 @@ def plot_probability_gauge(churn_prob: float, save_path: str | None = None) -> F
         linewidth=2,
     )
 
-    # Labels
+    # Scale labels
     ax.text(1.1, -0.2, "0%", ha="center", fontsize=9)
     ax.text(0.65, 0.8, "50%", ha="center", fontsize=9)
     ax.text(-1.1, -0.2, "100%", ha="center", fontsize=9)
@@ -171,6 +172,22 @@ def plot_probability_gauge(churn_prob: float, save_path: str | None = None) -> F
     # Central text
     ax.text(0, -0.4, f"{100*churn_prob:.1f}%", ha="center", fontsize=16, fontweight="bold")
     ax.text(0, -0.55, "Churn Probability", ha="center", fontsize=11)
+
+
+def plot_probability_gauge(churn_prob: float, save_path: str | None = None) -> Figure:
+    """Single-value gauge/dial showing churn probability (0–1).
+
+    Args:
+        churn_prob: Churn probability between 0 and 1.
+        save_path: Optional file path to save figure.
+
+    Returns:
+        Matplotlib Figure object.
+    """
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    _draw_gauge_arcs(ax)
+    _draw_gauge_needle(ax, churn_prob)
 
     ax.set_xlim(-1.4, 1.4)
     ax.set_ylim(-0.7, 1.3)
@@ -181,6 +198,30 @@ def plot_probability_gauge(churn_prob: float, save_path: str | None = None) -> F
         fig.savefig(save_path, dpi=100, bbox_inches="tight")
 
     return fig
+
+
+def _style_metrics_table(table: matplotlib.table.Table, df: pd.DataFrame, best_model: str) -> None:
+    """Style metrics table with header and best model highlighting.
+
+    Args:
+        table: Matplotlib table object to style.
+        df: DataFrame with metrics (used to get column/row counts).
+        best_model: Name of the best model to highlight.
+    """
+    # Highlight best model row (cell indexing: (row, col) where row 0 is header)
+    best_row_idx = list(df.index).index(best_model) + 1
+    for col in range(len(df.columns) + 1):
+        if (best_row_idx, col) in table._cells:
+            cell = table[(best_row_idx, col)]
+            cell.set_facecolor("#fff3cd")
+            cell.set_text_props(weight="bold")
+
+    # Style header row
+    for col in range(len(df.columns) + 1):
+        if (0, col) in table._cells:
+            cell = table[(0, col)]
+            cell.set_facecolor("#3498db")
+            cell.set_text_props(weight="bold", color="white")
 
 
 def plot_metrics_table(
@@ -222,20 +263,7 @@ def plot_metrics_table(
     table.set_fontsize(9)
     table.scale(1, 2)
 
-    # Highlight best model row (cell indexing: (row, col) where row 0 is header)
-    best_row_idx = list(df.index).index(best_model) + 1
-    for col in range(len(df.columns) + 1):
-        if (best_row_idx, col) in table._cells:
-            cell = table[(best_row_idx, col)]
-            cell.set_facecolor("#fff3cd")
-            cell.set_text_props(weight="bold")
-
-    # Style header row
-    for col in range(len(df.columns) + 1):
-        if (0, col) in table._cells:
-            cell = table[(0, col)]
-            cell.set_facecolor("#3498db")
-            cell.set_text_props(weight="bold", color="white")
+    _style_metrics_table(table, df, best_model)
 
     ax.set_title("Model Metrics Comparison", fontsize=13, fontweight="bold", pad=20)
 
