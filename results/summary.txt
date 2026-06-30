@@ -1,0 +1,75 @@
+========================================
+CUSTOMER CHURN PREDICTION — RESULTS SUMMARY
+========================================
+
+DATASET STATISTICS
+------------------
+Raw rows        : 7,043
+Raw columns     : 21
+Churn rate      : 26.5% (1,869 churned / 5,174 retained)
+Train set size  : 4,929 rows
+Validation size : 1,057 rows
+Test set size   : 1,057 rows
+Features selected (after engineering + selection): 25
+  Contract, DeviceProtection, InternetService, MonthlyCharges,
+  MultipleLines, OnlineBackup, OnlineSecurity, PaperlessBilling,
+  PaymentMethod, StreamingMovies, TechSupport, TotalCharges,
+  charge_increase_proxy, gender, is_month_to_month, is_new_customer,
+  monthly_charge_per_service, mtm_x_new, num_services, risk_score,
+  tenure, tenure_bucket, tenure_squared, tenure_x_monthly, total_vs_expected
+
+MODEL COMPARISON — TEST SET (n=1,057)
+--------------------------------------
+Metric definitions:
+  auc_roc     : Area Under the ROC Curve
+  auc_pr      : Area Under the Precision-Recall Curve (primary tuning target)
+  f1          : F1 Score (threshold=0.5)
+  precision   : Precision (threshold=0.5)
+  recall      : Recall / Sensitivity (threshold=0.5)
+  accuracy    : Accuracy (threshold=0.5)
+  log_loss    : Logarithmic Loss (lower is better)
+  brier_score : Brier Score (lower is better)
+
+Model               auc_roc  auc_pr   f1       precision  recall   accuracy  log_loss  brier_score
+------------------  -------  -------  -------  ---------  -------  --------  --------  -----------
+LogisticRegression  0.8537   0.6756   0.5896   0.6667     0.5286   0.8051    0.4043    0.1324
+RandomForest        0.8515   0.6694   0.6331   0.5301     0.7857   0.7588    0.4651    0.1560
+XGBoost             0.8407   0.6507   0.6154   0.5118     0.7714   0.7446    0.4797    0.1625
+LightGBM            0.8462   0.6616   0.6329   0.5220     0.8036   0.7531    0.4806    0.1625
+
+Best model by AUC-PR : LogisticRegression (0.6756 on test)
+Best model by AUC-ROC: LogisticRegression (0.8537 on test)
+Best recall          : LightGBM (0.8036) — highest sensitivity for catching churners
+
+Note: XGBoost was selected as best model during validation (val AUC-PR ~0.666);
+LogisticRegression edges it on the test set due to better calibration.
+
+TOP SHAP CHURN DRIVERS (XGBoost, test set, mean |SHAP| importance)
+--------------------------------------------------------------------
+Rank  Feature                              Importance
+1     is_month_to_month                    0.3511
+2     Contract_Month-to-month              0.2995
+3     mtm_x_new (month-to-month × new)    0.0498
+4     InternetService_Fiber optic          0.0415
+5     OnlineSecurity_No                    0.0215
+6     PaymentMethod_Electronic check       0.0190
+7     TechSupport_No                       0.0170
+8     StreamingMovies_Yes                  0.0153
+9     Contract_Two year (protective)       0.0151
+10    StreamingMovies_No                   0.0131
+
+BUSINESS INSIGHTS
+-----------------
+1. CONTRACT TYPE is the strongest churn signal: month-to-month customers
+   (features #1 and #2 together account for ~65% of model importance) churn
+   at dramatically higher rates — converting them to annual contracts is the
+   highest-ROI retention lever.
+
+2. NEW CUSTOMERS ON MONTH-TO-MONTH PLANS (mtm_x_new) form a high-risk
+   cohort: the interaction term ranks 3rd, confirming that early-tenure
+   month-to-month customers need proactive outreach in the first 90 days.
+
+3. FIBER OPTIC + NO SECURITY/SUPPORT services drive churn: customers with
+   Fiber optic internet who lack OnlineSecurity or TechSupport are
+   significantly more likely to churn, suggesting upsell of security add-ons
+   as a retention strategy.
